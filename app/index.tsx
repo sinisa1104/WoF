@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { id, type InstaQLEntity } from "@instantdb/react-native";
 import { useMemo, useState } from "react";
 import {
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 import { AppSchema } from "@/instant.schema";
 import { db } from "@/lib/db";
+import { readTodaySteps } from "@/lib/health";
 
 type ChallengeType = "Quest" | "Dayli" | "Weekly";
 type AppPage = "Challenges" | "Milanos" | "PersonalGoals" | "Rewards";
@@ -19,8 +21,7 @@ type AppPage = "Challenges" | "Milanos" | "PersonalGoals" | "Rewards";
 type Challenge = InstaQLEntity<AppSchema, "challenges">;
 type FamilyUser = InstaQLEntity<AppSchema, "$users">;
 
-const ownerEmail = "milanovic.sini@gmail.com";
-const authApiUrl = process.env.EXPO_PUBLIC_AUTH_API_URL || "http://localhost:8787";
+const ownerDisplayName = "Admin";
 const typeStyles: Record<ChallengeType, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
   Quest: { bg: "#efe7ff", text: "#6d3fd1", icon: "sparkles-outline" },
   Dayli: { bg: "#dcfce7", text: "#167548", icon: "sunny-outline" },
@@ -61,7 +62,7 @@ export default function App() {
 
   const familyUsers = usersQuery.data?.$users ?? [];
   const currentUser = familyUsers.find((user) => user.id === auth.user?.id);
-  const isOwner = auth.user.email?.toLowerCase() === ownerEmail;
+  const isOwner = currentUser?.role === "admin";
   const isApproved = isOwner || currentUser?.status === "approved";
 
   if (!isApproved) {
@@ -78,7 +79,11 @@ export default function App() {
       familyUsers={familyUsers}
       isOwner={isOwner}
       signedInEmail={auth.user.email ?? ""}
-      signedInName={currentUser?.username || auth.user.email || "Family member"}
+      signedInName={
+        isOwner
+          ? ownerDisplayName
+          : currentUser?.username || auth.user.email || "Family member"
+      }
     />
   );
 }
@@ -99,6 +104,11 @@ function ChallengeBoard({
   const [showOnlyMine, setShowOnlyMine] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [form, setForm] = useState(emptyForm);
+  const [todaySteps, setTodaySteps] = useState<number | null>(null);
+  const [healthMessage, setHealthMessage] = useState(
+    "Connect Health Connect to sync today's steps.",
+  );
+  const [isConnectingHealth, setIsConnectingHealth] = useState(false);
 
   const { isLoading, error, data } = db.useQuery({ challenges: {} });
   const assignableMembers = useMemo(() => {
@@ -106,9 +116,9 @@ function ChallengeBoard({
       .filter(
         (user) =>
           user.status === "approved" ||
-          user.email?.toLowerCase() === ownerEmail,
+          user.role === "admin",
       )
-      .map((user) => user.username || user.email || "Family member");
+      .map((user) => getFamilyDisplayName(user));
 
     return members.length > 0 ? members : [signedInEmail || "Family member"];
   }, [familyUsers, signedInEmail]);
@@ -118,7 +128,7 @@ function ChallengeBoard({
       familyUsers.filter(
         (user) =>
           user.status === "pending" &&
-          user.email?.toLowerCase() !== ownerEmail,
+          user.role !== "admin",
       ),
     [familyUsers],
   );
@@ -127,7 +137,7 @@ function ChallengeBoard({
       familyUsers.filter(
         (user) =>
           user.status === "approved" ||
-          user.email?.toLowerCase() === ownerEmail,
+          user.role === "admin",
       ),
     [familyUsers],
   );
@@ -203,6 +213,16 @@ function ChallengeBoard({
     db.transact(db.tx.challenges[challenge.id].delete());
   };
 
+  const connectHealthData = async () => {
+    setIsConnectingHealth(true);
+    setHealthMessage("Connecting to Health Connect...");
+
+    const result = await readTodaySteps();
+    setTodaySteps(result.steps);
+    setHealthMessage(result.message);
+    setIsConnectingHealth(false);
+  };
+
   const approveUser = (user: FamilyUser) => {
     db.transact(
       db.tx.$users[user.id].update({
@@ -213,7 +233,7 @@ function ChallengeBoard({
   };
 
   const removeUserAccess = (user: FamilyUser) => {
-    if (user.email?.toLowerCase() === ownerEmail) {
+    if (user.role === "admin") {
       return;
     }
 
@@ -372,7 +392,7 @@ function ChallengeBoard({
             </Text>
             <View className="mt-2 flex-row flex-wrap gap-2">
               {approvedUsers.map((user) => {
-                const isOwnerUser = user.email?.toLowerCase() === ownerEmail;
+                const isOwnerUser = user.role === "admin";
 
                 return (
                   <View
@@ -380,7 +400,7 @@ function ChallengeBoard({
                     className="flex-row items-center gap-2 rounded-full bg-[#dcfce7] px-3 py-1.5"
                   >
                     <Text className="text-xs font-black text-[#167548]">
-                      {user.username || user.email || "Family member"}
+                      {getFamilyDisplayName(user)}
                     </Text>
                     {!isOwnerUser ? (
                       <Pressable
@@ -423,22 +443,41 @@ function ChallengeBoard({
               </View>
             ) : null}
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setShowOnlyMine((current) => !current)}
-              className={`mb-4 min-h-[44px] flex-row items-center justify-center gap-2 rounded-xl px-4 ${
-                showOnlyMine ? "bg-[#d8f26a]" : "bg-white"
-              }`}
-            >
-              <Ionicons
-                name={showOnlyMine ? "person" : "people-outline"}
-                size={17}
-                color="#1d2118"
-              />
-              <Text className="font-black text-[#1d2118]">
-                {showOnlyMine ? `${signedInName}'s tasks` : `Show ${signedInName}`}
-              </Text>
-            </Pressable>
+            <View className="mb-4 flex-row gap-2">
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setShowOnlyMine((current) => !current)}
+                className={`min-h-[44px] flex-1 flex-row items-center justify-center gap-2 rounded-xl px-3 ${
+                  showOnlyMine ? "bg-[#d8f26a]" : "bg-white"
+                }`}
+              >
+                <Ionicons
+                  name={showOnlyMine ? "person" : "people-outline"}
+                  size={17}
+                  color="#1d2118"
+                />
+                <Text className="font-black text-[#1d2118]" numberOfLines={1}>
+                  {showOnlyMine
+                    ? `${signedInName}'s tasks`
+                    : `Show ${signedInName}`}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={connectHealthData}
+                className="min-h-[44px] flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-white px-3"
+              >
+                {isConnectingHealth ? (
+                  <ActivityIndicator color="#1d2118" />
+                ) : (
+                  <Ionicons name="watch-outline" size={17} color="#1d2118" />
+                )}
+                <Text className="font-black text-[#1d2118]" numberOfLines={1}>
+                  Connect Data
+                </Text>
+              </Pressable>
+            </View>
 
             <View className="gap-3">
           {isLoading ? (
@@ -567,6 +606,25 @@ function ChallengeBoard({
               </Pressable>
             );
           })}
+
+          <View className="rounded-2xl bg-white p-5">
+            <View className="flex-row items-center justify-between gap-3">
+              <View className="flex-1">
+                <Text className="text-xs font-bold uppercase tracking-[1px] text-[#6c735e]">
+                  Health data
+                </Text>
+                <Text className="mt-1 text-base font-black text-[#1d2118]">
+                  Steps today
+                </Text>
+              </View>
+              <Text className="text-3xl font-black text-[#1d2118]">
+                {todaySteps === null ? "--" : todaySteps.toLocaleString()}
+              </Text>
+            </View>
+            <Text className="mt-2 text-sm font-semibold leading-5 text-[#5d6650]">
+              {healthMessage}
+            </Text>
+          </View>
             </View>
           </>
         ) : (
@@ -771,7 +829,7 @@ function LoginScreen() {
       <View className="rounded-3xl bg-white p-5">
         <FormField
           label="Username"
-          placeholder="Sini"
+          placeholder="Admin"
           value={username}
           onChangeText={setUsername}
         />
@@ -881,7 +939,7 @@ function PendingApprovalScreen({
           Waiting for approval
         </Text>
         <Text className="mt-3 text-base leading-6 text-[#5d6650]">
-          {username || email} is signed in. Sini needs to approve this account
+          {username || email} is signed in. Admin needs to approve this account
           before the challenge board opens.
         </Text>
         <Pressable
@@ -937,6 +995,7 @@ async function postAuth(
   path: "/login" | "/register",
   body: Record<string, string>,
 ): Promise<{ token: string }> {
+  const authApiUrl = getAuthApiUrl();
   const response = await fetch(`${authApiUrl}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -949,6 +1008,19 @@ async function postAuth(
   }
 
   return data;
+}
+
+function getAuthApiUrl() {
+  if (process.env.EXPO_PUBLIC_AUTH_API_URL) {
+    return process.env.EXPO_PUBLIC_AUTH_API_URL;
+  }
+
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoClient?.hostUri;
+  const host = debuggerHost?.split(":")[0];
+
+  return host ? `http://${host}:8787` : "http://localhost:8787";
 }
 
 function getPageTitle(activePage: AppPage, signedInName: string) {
@@ -973,6 +1045,14 @@ function getChallengeType(type: string): ChallengeType {
   }
 
   return "Quest";
+}
+
+function getFamilyDisplayName(user: FamilyUser) {
+  if (user.role === "admin") {
+    return ownerDisplayName;
+  }
+
+  return user.username || user.email || "Family member";
 }
 
 function InfoPill({

@@ -1,5 +1,6 @@
 import { createServer } from "node:http";
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual } from "node:crypto";
+import { networkInterfaces } from "node:os";
 import { promisify } from "node:util";
 import { config } from "dotenv";
 import { id, init } from "@instantdb/admin";
@@ -28,6 +29,10 @@ function normalizeEmail(value) {
 
 function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function isAdminCredential({ username, email }) {
+  return normalizeUsername(username) === "admin" && normalizeEmail(email) === ownerEmail;
 }
 
 function sendJson(res, status, body) {
@@ -73,12 +78,34 @@ async function findCredentialByUsername(username) {
   );
 }
 
+async function findCredentialByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  const data = await db.query({ userCredentials: {} });
+
+  return data.userCredentials.find(
+    (credential) => normalizeEmail(credential.email) === normalizedEmail,
+  );
+}
+
 async function upsertCredential({ username, email, password }) {
   const normalizedUsername = normalizeUsername(username);
   const existing = await findCredentialByUsername(username);
 
+  if (email === ownerEmail && normalizedUsername !== "admin") {
+    return { error: "Use the Admin username for the admin email." };
+  }
+
   if (existing && normalizeEmail(existing.email) !== email) {
     return { error: "This username is already registered." };
+  }
+
+  const existingEmailCredential = await findCredentialByEmail(email);
+
+  if (
+    existingEmailCredential &&
+    existingEmailCredential.normalizedUsername !== normalizedUsername
+  ) {
+    return { error: "This email address is already registered." };
   }
 
   const passwordParts = await hashPassword(password);
@@ -140,12 +167,25 @@ async function handleLogin(req, res) {
 
   const email = normalizeEmail(credential.email);
   const user = await findUserByEmail(email);
-  const isOwner = email === ownerEmail;
+  const isAdmin = isAdminCredential(credential);
 
-  if (!user || (!isOwner && user.status !== "approved")) {
+  if (email === ownerEmail && !isAdmin) {
+    sendJson(res, 403, { error: "Use the Admin username for this account." });
+    return;
+  }
+
+  if (!user || (!isAdmin && user.status !== "approved")) {
     sendJson(res, 403, { error: "This user is not approved yet." });
     return;
   }
+
+  await db.transact(
+    db.tx.$users[user.id].update({
+      username: credential.username,
+      status: "approved",
+      role: isAdmin ? "admin" : "member",
+    }),
+  );
 
   const token = await db.auth.createToken({ email });
   sendJson(res, 200, { token });
@@ -155,6 +195,7 @@ async function handleRegister(req, res) {
   const body = await readJson(req);
   const email = normalizeEmail(body.email);
   const inputError = validateCredentialsInput(body);
+  const normalizedUsername = normalizeUsername(body.username);
 
   if (inputError || !email || !body.code) {
     sendJson(res, 400, {
@@ -163,22 +204,27 @@ async function handleRegister(req, res) {
     return;
   }
 
-  const isOwner = email === ownerEmail;
+  if (email === ownerEmail && normalizedUsername !== "admin") {
+    sendJson(res, 403, { error: "Use the Admin username for the admin email." });
+    return;
+  }
+
+  const isAdmin = isAdminCredential({ username: body.username, email });
   const { user, created } = await db.auth.checkMagicCode(email, String(body.code), {
     extraFields: {
       username: String(body.username).trim(),
-      status: isOwner ? "approved" : "pending",
-      role: isOwner ? "admin" : "member",
+      status: isAdmin ? "approved" : "pending",
+      role: isAdmin ? "admin" : "member",
       joinedAt: Date.now(),
     },
   });
 
-  if (!isOwner && !created) {
+  if (!created) {
     await db.transact(
       db.tx.$users[user.id].update({
         username: String(body.username).trim(),
-        status: "pending",
-        role: "member",
+        status: isAdmin ? "approved" : "pending",
+        role: isAdmin ? "admin" : "member",
       }),
     );
   }
@@ -228,6 +274,22 @@ async function route(req, res) {
   }
 }
 
-createServer(route).listen(port, () => {
+function getLanAddresses() {
+  return Object.values(networkInterfaces())
+    .flat()
+    .filter((networkInterface) => {
+      return (
+        networkInterface &&
+        networkInterface.family === "IPv4" &&
+        !networkInterface.internal
+      );
+    })
+    .map((networkInterface) => networkInterface.address);
+}
+
+createServer(route).listen(port, "0.0.0.0", () => {
   console.log(`Auth server listening on http://localhost:${port}`);
+  getLanAddresses().forEach((address) => {
+    console.log(`Auth server LAN URL http://${address}:${port}`);
+  });
 });

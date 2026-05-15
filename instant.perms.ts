@@ -14,7 +14,7 @@ const rules = {
       email: "isAdmin || auth.id == data.id",
     },
     bind: {
-      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+      isAdmin: "'admin' in auth.ref('$user.role')",
     },
   },
   challenges: {
@@ -26,9 +26,9 @@ const rules = {
       delete: "isAdmin && data.completed == true",
     },
     bind: {
-      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+      isAdmin: "'admin' in auth.ref('$user.role')",
       isApproved:
-        "auth.email == 'milanovic.sini@gmail.com' || 'approved' in auth.ref('$user.status')",
+        "'admin' in auth.ref('$user.role') || 'approved' in auth.ref('$user.status')",
     },
   },
   userCredentials: {
@@ -39,7 +39,7 @@ const rules = {
       delete: "isAdmin",
     },
     bind: {
-      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+      isAdmin: "'admin' in auth.ref('$user.role')",
     },
   },
 } satisfies InstantRules;
