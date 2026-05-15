@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "wdf_app",
-    "slug": "wdf_app",
+    "name": "wof_app",
+    "slug": "wof_app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

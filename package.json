@@ -1,5 +1,5 @@
 {
-  "name": "wdf_app",
+  "name": "wof_app",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {

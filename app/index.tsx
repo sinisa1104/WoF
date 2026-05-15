@@ -35,6 +35,9 @@ const emptyForm = {
   due: "",
   points: "20",
 };
+const weeklyFamilyStepGoal = 125000;
+const weeklyFamilyPointGoal = 1000;
+const defaultMilanoWeekStreak = 7;
 
 export default function App() {
   const auth = db.useAuth();
@@ -115,8 +118,8 @@ function ChallengeBoard({
     const members = familyUsers
       .filter(
         (user) =>
-          user.status === "approved" ||
-          user.role === "admin",
+          user.status === "approved" &&
+          user.role !== "admin",
       )
       .map((user) => getFamilyDisplayName(user));
 
@@ -140,6 +143,13 @@ function ChallengeBoard({
           user.role === "admin",
       ),
     [familyUsers],
+  );
+  const familyMembers = useMemo(
+    () =>
+      approvedUsers.filter(
+        (user) => user.status === "approved" && user.role !== "admin",
+      ),
+    [approvedUsers],
   );
   const challenges = useMemo(
     () =>
@@ -627,6 +637,8 @@ function ChallengeBoard({
           </View>
             </View>
           </>
+        ) : activePage === "Milanos" ? (
+          <MilanosPage challenges={challenges} familyMembers={familyMembers} />
         ) : (
           <EmptyPage activePage={activePage} signedInName={signedInName} />
         )}
@@ -991,6 +1003,205 @@ function EmptyPage({
   );
 }
 
+function MilanosPage({
+  challenges,
+  familyMembers,
+}: {
+  challenges: Challenge[];
+  familyMembers: FamilyUser[];
+}) {
+  const weekWindow = getSundayWeekWindow();
+  const familySteps = getMockFamilyWeeklySteps(familyMembers, weekWindow.start);
+  const stepProgress = Math.min(familySteps / weeklyFamilyStepGoal, 1);
+  const weekGoalAchieved = familySteps >= weeklyFamilyStepGoal;
+  const rankings = getWeeklyPointRankings(
+    familyMembers,
+    challenges,
+    weekWindow.start,
+    weekWindow.end,
+  );
+  const familyPoints = rankings.reduce(
+    (total, ranking) => total + ranking.points,
+    0,
+  );
+  const pointProgress = Math.min(familyPoints / weeklyFamilyPointGoal, 1);
+  const pointGoalAchieved = familyPoints >= weeklyFamilyPointGoal;
+  const weekStreak = defaultMilanoWeekStreak;
+
+  return (
+    <View className="gap-3">
+      <View className="rounded-2xl bg-white p-5">
+        <View className="flex-row items-start justify-between gap-4">
+          <View className="flex-1">
+            <Text className="text-xs font-bold uppercase tracking-[1px] text-[#6c735e]">
+              Weekly family goal
+            </Text>
+            <Text className="mt-1 text-2xl font-black text-[#1d2118]">
+              125,000 steps
+            </Text>
+          </View>
+          <View
+            className={`rounded-full px-3 py-1 ${
+              weekGoalAchieved ? "bg-[#dcfce7]" : "bg-[#fff3c4]"
+            }`}
+          >
+            <Text
+              className={`text-xs font-black ${
+                weekGoalAchieved ? "text-[#167548]" : "text-[#8a5a00]"
+              }`}
+            >
+              {weekGoalAchieved ? "Reached" : "In progress"}
+            </Text>
+          </View>
+        </View>
+
+        <View className="mt-5 h-4 overflow-hidden rounded-full bg-[#eef0e9]">
+          <View
+            className="h-full rounded-full bg-[#d8f26a]"
+            style={{ width: `${stepProgress * 100}%` }}
+          />
+        </View>
+        <View className="mt-3 flex-row items-center justify-between">
+          <Text className="text-sm font-black text-[#1d2118]">
+            {familySteps.toLocaleString()} steps
+          </Text>
+          <Text className="text-sm font-bold text-[#6c735e]">
+            {Math.round(stepProgress * 100)}%
+          </Text>
+        </View>
+      </View>
+
+      <View className="rounded-2xl bg-white p-5">
+        <View className="flex-row items-start justify-between gap-4">
+          <View className="flex-1">
+            <Text className="text-xs font-bold uppercase tracking-[1px] text-[#6c735e]">
+              Weekly family goal
+            </Text>
+            <Text className="mt-1 text-2xl font-black text-[#1d2118]">
+              1,000 points
+            </Text>
+          </View>
+          <View
+            className={`rounded-full px-3 py-1 ${
+              pointGoalAchieved ? "bg-[#dcfce7]" : "bg-[#fff3c4]"
+            }`}
+          >
+            <Text
+              className={`text-xs font-black ${
+                pointGoalAchieved ? "text-[#167548]" : "text-[#8a5a00]"
+              }`}
+            >
+              {pointGoalAchieved ? "Reached" : "In progress"}
+            </Text>
+          </View>
+        </View>
+
+        <View className="mt-5 h-4 overflow-hidden rounded-full bg-[#eef0e9]">
+          <View
+            className="h-full rounded-full bg-[#1d2118]"
+            style={{ width: `${pointProgress * 100}%` }}
+          />
+        </View>
+        <View className="mt-3 flex-row items-center justify-between">
+          <Text className="text-sm font-black text-[#1d2118]">
+            {familyPoints.toLocaleString()} pts
+          </Text>
+          <Text className="text-sm font-bold text-[#6c735e]">
+            {Math.round(pointProgress * 100)}%
+          </Text>
+        </View>
+      </View>
+
+      <View className="flex-row gap-3">
+        <View className="flex-1 rounded-2xl bg-[#1d2118] p-5">
+          <Text className="text-xs font-bold uppercase tracking-[1px] text-[#c8f26a]">
+            Milano week streak
+          </Text>
+          <Text className="mt-2 text-4xl font-black text-white">
+            {weekStreak}
+          </Text>
+          <Text className="mt-1 text-sm font-semibold text-[#dfe8d3]">
+            weekly goals in a row
+          </Text>
+        </View>
+
+        <View className="flex-1 rounded-2xl bg-white p-5">
+          <Text className="text-xs font-bold uppercase tracking-[1px] text-[#6c735e]">
+            Next reset
+          </Text>
+          <Text className="mt-2 text-xl font-black text-[#1d2118]">
+            {formatShortDate(weekWindow.end)}
+          </Text>
+          <Text className="mt-1 text-sm font-semibold text-[#5d6650]">
+            Sunday 00:00
+          </Text>
+        </View>
+      </View>
+
+      <View className="rounded-2xl bg-white p-5">
+        <View className="mb-4 flex-row items-start justify-between gap-3">
+          <View className="flex-1">
+            <Text className="text-xs font-bold uppercase tracking-[1px] text-[#6c735e]">
+              Sunday Challenge
+            </Text>
+            <Text className="mt-1 text-xl font-black text-[#1d2118]">
+              {formatLongDate(weekWindow.end)}
+            </Text>
+          </View>
+          <Ionicons name="podium-outline" size={24} color="#1d2118" />
+        </View>
+
+        <View className="gap-2">
+          {rankings.length === 0 ? (
+            <View className="rounded-xl bg-[#f0f2ea] p-3">
+              <Text className="font-black text-[#1d2118]">
+                No family members yet
+              </Text>
+              <Text className="mt-1 text-sm font-semibold text-[#5d6650]">
+                Approved users will appear in the Sunday Challenge ranking.
+              </Text>
+            </View>
+          ) : (
+            rankings.map((ranking, index) => {
+              const isBottomTwo = index >= Math.max(rankings.length - 2, 0);
+
+              return (
+                <View
+                  key={ranking.name}
+                  className={`flex-row items-center gap-3 rounded-xl p-3 ${
+                    isBottomTwo ? "bg-[#fee2e2]" : "bg-[#f0f2ea]"
+                  }`}
+                >
+                  <View
+                    className={`h-8 w-8 items-center justify-center rounded-full ${
+                      isBottomTwo ? "bg-[#b91c1c]" : "bg-[#1d2118]"
+                    }`}
+                  >
+                    <Text className="text-xs font-black text-white">
+                      {index + 1}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="font-black text-[#1d2118]">
+                      {ranking.name}
+                    </Text>
+                    <Text className="text-xs font-bold text-[#6c735e]">
+                      {isBottomTwo ? "Sunday Challenge spot" : "Safe for now"}
+                    </Text>
+                  </View>
+                  <Text className="text-base font-black text-[#1d2118]">
+                    {ranking.points} pts
+                  </Text>
+                </View>
+              );
+            })
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 async function postAuth(
   path: "/login" | "/register",
   body: Record<string, string>,
@@ -1045,6 +1256,85 @@ function getChallengeType(type: string): ChallengeType {
   }
 
   return "Quest";
+}
+
+function getSundayWeekWindow() {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - start.getDay());
+
+  const end = new Date(start);
+  end.setDate(start.getDate() + 7);
+
+  return { start, end };
+}
+
+function getMockFamilyWeeklySteps(familyMembers: FamilyUser[], weekStart: Date) {
+  const weekSeed = weekStart.toISOString().slice(0, 10);
+  const targetWeeklySteps = 104000;
+
+  return familyMembers.reduce((total, member, index) => {
+    const memberSeed = `${weekSeed}-${member.id}-${index}`;
+    const seed = [...memberSeed].reduce(
+      (sum, character) => sum + character.charCodeAt(0),
+      0,
+    );
+    const baseSteps = familyMembers.length
+      ? Math.floor(targetWeeklySteps / familyMembers.length)
+      : 0;
+    const variation = (seed % 5001) - 2500;
+
+    return total + Math.max(baseSteps + variation, 0);
+  }, 0);
+}
+
+function getWeeklyPointRankings(
+  familyMembers: FamilyUser[],
+  challenges: Challenge[],
+  weekStart: Date,
+  weekEnd: Date,
+) {
+  const startTime = weekStart.getTime();
+  const endTime = weekEnd.getTime();
+
+  return familyMembers
+    .map((member) => {
+      const name = getFamilyDisplayName(member);
+      const points = challenges
+        .filter(
+          (challenge) =>
+            challenge.completed &&
+            challenge.assignedTo === name &&
+            challenge.createdAt >= startTime &&
+            challenge.createdAt < endTime,
+        )
+        .reduce((total, challenge) => total + challenge.points, 0);
+
+      return { name, points };
+    })
+    .sort((first, second) => {
+      if (second.points !== first.points) {
+        return second.points - first.points;
+      }
+
+      return first.name.localeCompare(second.name);
+    });
+}
+
+function formatShortDate(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function formatLongDate(date: Date) {
+  return date.toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "2-digit",
+    month: "short",
+  });
 }
 
 function getFamilyDisplayName(user: FamilyUser) {
