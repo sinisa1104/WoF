@@ -20,6 +20,7 @@ type Challenge = InstaQLEntity<AppSchema, "challenges">;
 type FamilyUser = InstaQLEntity<AppSchema, "$users">;
 
 const ownerEmail = "milanovic.sini@gmail.com";
+const authApiUrl = process.env.EXPO_PUBLIC_AUTH_API_URL || "http://localhost:8787";
 const typeStyles: Record<ChallengeType, { bg: string; text: string; icon: keyof typeof Ionicons.glyphMap }> = {
   Quest: { bg: "#efe7ff", text: "#6d3fd1", icon: "sparkles-outline" },
   Dayli: { bg: "#dcfce7", text: "#167548", icon: "sunny-outline" },
@@ -222,6 +223,7 @@ function ChallengeBoard({
         role: "removed",
       }),
     );
+
   };
 
   return (
@@ -675,16 +677,46 @@ function ChallengeBoard({
 function LoginScreen() {
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [sentEmail, setSentEmail] = useState("");
+  const [isRegistering, setIsRegistering] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState("");
 
   const normalizedEmail = email.trim().toLowerCase();
 
+  const loginWithUsername = async () => {
+    if (username.trim().length < 2 || password.length < 6) {
+      setError("Enter your username and password.");
+      return;
+    }
+
+    setIsBusy(true);
+    setError("");
+
+    try {
+      const { token } = await postAuth("/login", {
+        username: username.trim(),
+        password,
+      });
+
+      await db.auth.signInWithToken(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not login.");
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const startRegister = () => {
+    setIsRegistering(true);
+    setError("");
+  };
+
   const sendCode = async () => {
-    if (!normalizedEmail || username.trim().length < 2) {
-      setError("Enter your email and a username with at least 2 letters.");
+    if (!normalizedEmail || username.trim().length < 2 || password.length < 6) {
+      setError("Enter username, email, and a password with at least 6 characters.");
       return;
     }
 
@@ -710,28 +742,14 @@ function LoginScreen() {
     setError("");
 
     try {
-      const isOwner = sentEmail === ownerEmail;
-
-      const result = await db.auth.signInWithMagicCode({
+      const { token } = await postAuth("/register", {
+        username: username.trim(),
         email: sentEmail,
+        password,
         code: code.trim(),
-        extraFields: {
-          username: username.trim(),
-          status: isOwner ? "approved" : "pending",
-          role: isOwner ? "admin" : "member",
-          joinedAt: Date.now(),
-        },
       });
 
-      if (!isOwner && !result.created) {
-        db.transact(
-          db.tx.$users[result.user.id].update({
-            username: username.trim(),
-            status: "pending",
-            role: "member",
-          }),
-        );
-      }
+      await db.auth.signInWithToken(token);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not verify login code.");
     } finally {
@@ -758,26 +776,38 @@ function LoginScreen() {
           onChangeText={setUsername}
         />
         <FormField
-          autoCapitalize="none"
-          keyboardType="email-address"
-          label="Email address"
-          placeholder="you@example.com"
-          value={email}
-          onChangeText={setEmail}
+          label="Password"
+          placeholder="At least 6 characters"
+          secureTextEntry
+          value={password}
+          onChangeText={setPassword}
         />
 
-        {sentEmail ? (
+        {isRegistering ? (
           <>
             <FormField
-              keyboardType="number-pad"
-              label="Login code"
-              placeholder="123456"
-              value={code}
-              onChangeText={setCode}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              label="Email address"
+              placeholder="you@example.com"
+              value={email}
+              onChangeText={setEmail}
             />
-            <Text className="mb-4 text-sm font-semibold leading-5 text-[#5d6650]">
-              The approval request is created after this code is verified.
-            </Text>
+
+            {sentEmail ? (
+              <>
+                <FormField
+                  keyboardType="number-pad"
+                  label="Login code"
+                  placeholder="123456"
+                  value={code}
+                  onChangeText={setCode}
+                />
+                <Text className="mb-4 text-sm font-semibold leading-5 text-[#5d6650]">
+                  The approval request is created after this code is verified.
+                </Text>
+              </>
+            ) : null}
           </>
         ) : null}
 
@@ -787,20 +817,48 @@ function LoginScreen() {
           </Text>
         ) : null}
 
-        <Pressable
-          accessibilityRole="button"
-          onPress={sentEmail ? verifyCode : sendCode}
-          className="min-h-[52px] flex-row items-center justify-center gap-2 rounded-2xl bg-[#1d2118]"
-        >
-          {isBusy ? (
-            <ActivityIndicator color="#d8f26a" />
-          ) : (
-            <Ionicons name="mail-outline" size={20} color="#d8f26a" />
-          )}
-          <Text className="text-base font-black text-white">
-            {sentEmail ? "Verify code" : "Send code"}
-          </Text>
-        </Pressable>
+        {isRegistering ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={sentEmail ? verifyCode : sendCode}
+            className="min-h-[52px] flex-row items-center justify-center gap-2 rounded-2xl bg-[#1d2118]"
+          >
+            {isBusy ? (
+              <ActivityIndicator color="#d8f26a" />
+            ) : (
+              <Ionicons name="mail-outline" size={20} color="#d8f26a" />
+            )}
+            <Text className="text-base font-black text-white">
+              {sentEmail ? "Verify code" : "Send code"}
+            </Text>
+          </Pressable>
+        ) : (
+          <View className="gap-3">
+            <Pressable
+              accessibilityRole="button"
+              onPress={loginWithUsername}
+              className="min-h-[52px] flex-row items-center justify-center gap-2 rounded-2xl bg-[#1d2118]"
+            >
+              {isBusy ? (
+                <ActivityIndicator color="#d8f26a" />
+              ) : (
+                <Ionicons name="log-in-outline" size={20} color="#d8f26a" />
+              )}
+              <Text className="text-base font-black text-white">Login</Text>
+            </Pressable>
+
+            <Pressable
+              accessibilityRole="button"
+              onPress={startRegister}
+              className="min-h-[52px] flex-row items-center justify-center gap-2 rounded-2xl bg-[#f0f2ea]"
+            >
+              <Ionicons name="person-add-outline" size={20} color="#1d2118" />
+              <Text className="text-base font-black text-[#1d2118]">
+                Register
+              </Text>
+            </Pressable>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -873,6 +931,24 @@ function EmptyPage({
       </Text>
     </View>
   );
+}
+
+async function postAuth(
+  path: "/login" | "/register",
+  body: Record<string, string>,
+): Promise<{ token: string }> {
+  const response = await fetch(`${authApiUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Authentication failed.");
+  }
+
+  return data;
 }
 
 function getPageTitle(activePage: AppPage, signedInName: string) {

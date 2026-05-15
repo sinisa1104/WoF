@@ -31,6 +31,17 @@ const rules = {
         "auth.email == 'milanovic.sini@gmail.com' || 'approved' in auth.ref('$user.status')",
     },
   },
+  userCredentials: {
+    allow: {
+      view: "isAdmin",
+      create: "isAdmin",
+      update: "isAdmin",
+      delete: "isAdmin",
+    },
+    bind: {
+      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;

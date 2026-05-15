@@ -30,6 +30,15 @@ const _schema = i.schema({
       completed: i.boolean(),
       createdAt: i.number(),
     }),
+    userCredentials: i.entity({
+      username: i.string(),
+      normalizedUsername: i.string().unique().indexed(),
+      email: i.string().indexed(),
+      passwordHash: i.string(),
+      salt: i.string(),
+      createdAt: i.number(),
+      updatedAt: i.number(),
+    }),
   },
   rooms: {},
   links: {
