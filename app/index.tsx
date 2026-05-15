@@ -87,6 +87,14 @@ export default function App() {
     );
   };
 
+  const deleteChallenge = (challenge: Challenge) => {
+    if (!challenge.completed) {
+      return;
+    }
+
+    db.transact(db.tx.challenges[challenge.id].delete());
+  };
+
   return (
     <View className="flex-1 bg-[#f6f7f2]">
       <ScrollView
@@ -235,6 +243,31 @@ export default function App() {
                         label={`${challenge.points} pts`}
                       />
                     </View>
+
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: !challenge.completed }}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        deleteChallenge(challenge);
+                      }}
+                      className={`mt-4 min-h-[40px] flex-row items-center justify-center gap-2 rounded-xl px-4 ${
+                        challenge.completed ? "bg-[#fee2e2]" : "bg-[#eef0e9]"
+                      }`}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color={challenge.completed ? "#b91c1c" : "#8b9480"}
+                      />
+                      <Text
+                        className={`text-sm font-black ${
+                          challenge.completed ? "text-[#b91c1c]" : "text-[#8b9480]"
+                        }`}
+                      >
+                        Delete
+                      </Text>
+                    </Pressable>
                   </View>
                 </View>
               </Pressable>
