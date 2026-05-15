@@ -12,6 +12,10 @@ const _schema = i.schema({
       email: i.string().unique().indexed().optional(),
       imageURL: i.string().optional(),
       type: i.string().optional(),
+      username: i.string().optional(),
+      status: i.string().optional(),
+      role: i.string().optional(),
+      joinedAt: i.number().optional(),
     }),
     colors: i.entity({
       value: i.string(),

@@ -3,22 +3,34 @@
 import type { InstantRules } from "@instantdb/react-native";
 
 const rules = {
-  /**
-   * Welcome to Instant's permission system!
-   * Right now your rules are empty. To start filling them in, check out the docs:
-   * https://www.instantdb.com/docs/permissions
-   *
-   * Here's an example to give you a feel:
-   * posts: {
-   *   allow: {
-   *     view: "true",
-   *     create: "isOwner",
-   *     update: "isOwner",
-   *     delete: "isOwner",
-   *   },
-   *   bind: ["isOwner", "auth.id != null && auth.id == data.ownerId"],
-   * },
-   */
+  $users: {
+    allow: {
+      view: "isAdmin || auth.id == data.id || data.status == 'approved'",
+      create: "data.username != null && data.username.size() >= 2",
+      update:
+        "isAdmin || (auth.id == data.id && request.modifiedFields.all(field, field in ['username', 'status', 'role']) && newData.status == 'pending' && newData.role == 'member')",
+    },
+    fields: {
+      email: "isAdmin || auth.id == data.id",
+    },
+    bind: {
+      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+    },
+  },
+  challenges: {
+    allow: {
+      view: "isApproved",
+      create: "isApproved",
+      update:
+        "isAdmin || (isApproved && data.assignedTo in auth.ref('$user.username') && request.modifiedFields == ['completed'])",
+      delete: "isAdmin && data.completed == true",
+    },
+    bind: {
+      isAdmin: "auth.email == 'milanovic.sini@gmail.com'",
+      isApproved:
+        "auth.email == 'milanovic.sini@gmail.com' || 'approved' in auth.ref('$user.status')",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;
